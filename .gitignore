@@ -1,0 +1,77 @@
+# Dependencies
+node_modules/
+__pycache__/
+*.py[cod]
+*$py.class
+.Python
+*.so
+.eggs/
+*.egg-info/
+*.egg
+
+# Expo / React Native
+.expo/
+dist/
+web-build/
+expo-env.d.ts
+*.jks
+*.p8
+*.p12
+*.key
+*.mobileprovision
+.metro-health-check*
+/app/ios/
+/app/android/
+
+# Python virtual environments
+venv/
+env/
+.venv/
+ENV/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# macOS
+.DS_Store
+*.pem
+
+# Environment files
+.env
+.env.local
+.env*.local
+*.local.env
+
+# Logs
+*.log
+npm-debug.*
+yarn-debug.*
+yarn-error.*
+
+# Testing
+.coverage
+htmlcov/
+.pytest_cache/
+
+# Build artifacts
+build/
+*.tsbuildinfo
+
+# Jupyter Notebooks
+.ipynb_checkpoints/
+
+# Secrets
+credentials.json
+secrets.json
+*.secret
+
+# Temporary files
+*.tmp
+*.temp
+.cache/
+
+# Claude
+.claude/

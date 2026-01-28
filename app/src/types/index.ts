@@ -1,0 +1,138 @@
+// Dev trait options
+export type DevTrait = 'normal' | 'impact' | 'star' | 'elite';
+
+// Game versions
+export type GameVersion = 'ncaa_25' | 'ncaa_26' | 'ncaa_27';
+
+// Positions - starting with QB only for validation
+export type Position = 'QB' | 'RB' | 'WR' | 'TE' | 'OL' | 'DL' | 'LB' | 'CB' | 'S' | 'K' | 'P';
+
+// QB Archetypes (correct values for NCAA game)
+export type QBArchetype = 'Pocket Passer' | 'Dual Threat' | 'Backfield Creator';
+
+// Positions for QB/ATH recruiting
+export type QBPosition = 'QB' | 'ATH';
+
+// Recruit class year
+export type RecruitClass = 'Freshman' | 'Sophomore' | 'Junior' | 'Senior';
+
+// User tier
+export type UserTier = 'free' | 'premium';
+
+// User profile
+export interface User {
+  id: string;
+  email: string;
+  created_at: string;
+  current_game_year: number;
+  tier: UserTier;
+}
+
+
+// QB stats as flat object keys (for JSONB storage)
+export interface QBStats {
+  awareness: number;
+  throw_power: number;
+  short_accuracy: number;
+  medium_accuracy: number;
+  deep_accuracy: number;
+  throw_on_run: number;
+  under_pressure: number;
+  break_sack: number;
+  speed: number;
+  acceleration: number;
+}
+
+// Main recruit type
+export interface Recruit {
+  id: string;
+  user_id: string;
+  game_version: GameVersion;
+  game_year: number;
+
+  // Basic Info
+  name: string;
+  position: Position;
+  archetype: string;
+  star_rating: number; // 1-5
+
+  // Physical - stored separately for easier querying
+  height_feet: number;
+  height_inches: number; // the remaining inches (0-11)
+  weight_lbs: number;
+
+  // Location
+  hometown: string;
+  state: string;
+
+  // The 10 scoutable stats (flat JSONB object)
+  stats: QBStats; // Will be a union type when we add more positions
+
+  // New fields from enhanced OCR
+  class?: string; // Freshman, Sophomore, Junior, Senior
+  abilities?: string[]; // Array of ability names
+  mentals?: string[]; // Array of mental trait names
+  ocr_dev_trait?: string; // Dev trait extracted from screenshot (before recruiting)
+  gem_color?: 'green' | 'red' | null; // Green or red gem indicator on recruit profile
+
+  // Screenshot (premium)
+  screenshot_url?: string;
+
+  // Ground Truth (filled in later by user after recruiting)
+  actual_dev_trait?: DevTrait;
+  dev_trait_reported_at?: string;
+
+  // Prediction
+  predicted_dev_trait?: DevTrait;
+  prediction_confidence?: {
+    normal: number;
+    impact: number;
+    star: number;
+    elite: number;
+  };
+
+  created_at: string;
+  updated_at: string;
+}
+
+// For creating a new recruit
+export interface CreateRecruitInput {
+  game_version: GameVersion;
+  game_year: number;
+  name: string;
+  position: Position;
+  archetype: string;
+  star_rating: number;
+  height_feet: number;
+  height_inches: number;
+  weight_lbs: number;
+  hometown: string;
+  state: string;
+  stats: QBStats;
+  screenshot_url?: string;
+}
+
+// QB stat definitions - display names and keys
+export const QB_STAT_CONFIG = [
+  { key: 'awareness', label: 'Awareness' },
+  { key: 'throw_power', label: 'Throw Power' },
+  { key: 'short_accuracy', label: 'Short Accuracy' },
+  { key: 'medium_accuracy', label: 'Medium Accuracy' },
+  { key: 'deep_accuracy', label: 'Deep Accuracy' },
+  { key: 'throw_on_run', label: 'Throw on Run' },
+  { key: 'under_pressure', label: 'Under Pressure' },
+  { key: 'break_sack', label: 'Break Sack' },
+  { key: 'speed', label: 'Speed' },
+  { key: 'acceleration', label: 'Acceleration' },
+] as const;
+
+export type QBStatKey = typeof QB_STAT_CONFIG[number]['key'];
+
+// US States for dropdown
+export const US_STATES = [
+  'AL', 'AK', 'AZ', 'AR', 'CA', 'CO', 'CT', 'DE', 'FL', 'GA',
+  'HI', 'ID', 'IL', 'IN', 'IA', 'KS', 'KY', 'LA', 'ME', 'MD',
+  'MA', 'MI', 'MN', 'MS', 'MO', 'MT', 'NE', 'NV', 'NH', 'NJ',
+  'NM', 'NY', 'NC', 'ND', 'OH', 'OK', 'OR', 'PA', 'RI', 'SC',
+  'SD', 'TN', 'TX', 'UT', 'VT', 'VA', 'WA', 'WV', 'WI', 'WY'
+];
