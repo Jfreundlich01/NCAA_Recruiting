@@ -78,3 +78,6 @@ secrets.json
 
 # Planning docs (private)
 PLANNING.md
+
+# Training data (private)
+app/data/

@@ -1,6 +1,6 @@
 /**
  * Offline Prediction Service
- * Hybrid approach: Rules handle ~70% of cases, Neural Network handles ~30%
+ * Hybrid approach: Rules handle ~70% of cases, Random Forest handles ~30%
  * No network required - all predictions run locally
  */
 
@@ -9,15 +9,13 @@ import { applyRules, getRecommendation, getConfidence } from './predictionEngine
 import {
   engineerDualThreatFeatures,
   engineerBinaryFeatures,
-  initNormalizationParams,
 } from './featureEngineering';
 import {
-  initTensorFlow,
-  isTensorFlowReady,
+  initRandomForest,
+  isRandomForestReady,
   predictDualThreat,
   predictBinary,
-  getNormalizationParams,
-} from './tensorflowPredictor';
+} from './randomForestPredictor';
 
 let isServiceReady = false;
 
@@ -33,49 +31,23 @@ export async function initOfflinePrediction(): Promise<void> {
 
   console.log('Initializing offline prediction service...');
 
-  // Initialize TensorFlow and load models
-  await initTensorFlow();
-
-  // Pass normalization params to feature engineering
-  const dtNorm = getNormalizationParams('dual_threat');
-  const binNorm = getNormalizationParams('binary');
-
-  if (dtNorm && binNorm) {
-    initNormalizationParams(dtNorm, binNorm);
-  }
+  // Initialize Random Forest models
+  await initRandomForest();
 
   isServiceReady = true;
-  console.log('Offline prediction service ready');
+  console.log('Offline prediction service ready (Random Forest)');
 }
 
 /**
  * Check if the service is ready
  */
 export function isOfflinePredictionReady(): boolean {
-  return isServiceReady && isTensorFlowReady();
-}
-
-/**
- * Normalize features using model's mean/std
- */
-function normalizeFeatures(
-  features: number[],
-  modelType: 'dual_threat' | 'binary'
-): number[] {
-  const norm = getNormalizationParams(modelType);
-  if (!norm) {
-    throw new Error(`Normalization params not loaded for ${modelType}`);
-  }
-
-  return features.map((val, i) => {
-    const std = norm.std[i];
-    return (val - norm.mean[i]) / (std === 0 ? 1 : std);
-  });
+  return isServiceReady && isRandomForestReady();
 }
 
 /**
  * Predict Star/Elite probability for a single recruit
- * Uses rules first, falls back to neural network for uncertain cases
+ * Uses rules first, falls back to Random Forest for uncertain cases
  */
 export async function predictRecruit(recruit: RecruitInput): Promise<PredictionResult> {
   const isDualThreat = recruit.archetype === 'Dual Threat';
@@ -91,24 +63,23 @@ export async function predictRecruit(recruit: RecruitInput): Promise<PredictionR
     probability = ruleResult.probability;
     modelUsed = `Rule: ${ruleResult.ruleApplied}`;
   } else {
-    // No confident rule - use neural network
+    // No confident rule - use Random Forest
     if (!isServiceReady) {
       throw new Error('Offline prediction service not initialized');
     }
 
     if (isDualThreat) {
+      // Get raw features (RF doesn't need normalization)
       const features = engineerDualThreatFeatures(recruit);
-      const normalized = normalizeFeatures(features, 'dual_threat');
-      probability = await predictDualThreat(normalized);
-      modelUsed = 'Dual Threat NN';
+      probability = await predictDualThreat(features);
+      modelUsed = 'Dual Threat RF (100 trees)';
     } else {
       const features = engineerBinaryFeatures(recruit);
-      const normalized = normalizeFeatures(features, 'binary');
-      probability = await predictBinary(normalized);
-      modelUsed = 'Binary NN';
+      probability = await predictBinary(features);
+      modelUsed = 'Binary RF (100 trees)';
     }
 
-    // Apply floors/ceilings to NN output based on gem color
+    // Apply floors/ceilings to RF output based on gem color
     probability = applyGemAdjustments(probability, recruit.gem_color, isDualThreat);
   }
 
@@ -128,7 +99,7 @@ export async function predictRecruit(recruit: RecruitInput): Promise<PredictionR
 }
 
 /**
- * Apply gem-based floors/ceilings to NN predictions
+ * Apply gem-based floors/ceilings to RF predictions
  */
 function applyGemAdjustments(
   probability: number,
@@ -138,21 +109,15 @@ function applyGemAdjustments(
   if (!gemColor) return probability;
 
   if (isDualThreat) {
-    // Dual Threat gem adjustments
     if (gemColor === 'green') {
-      // Green gem floor: 78%
       return Math.max(probability, 0.78);
     } else if (gemColor === 'red') {
-      // Red gem ceiling: 35%
       return Math.min(probability, 0.35);
     }
   } else {
-    // Non-Dual Threat gem adjustments
     if (gemColor === 'green') {
-      // Green gem floor: 55%
       return Math.max(probability, 0.55);
     } else if (gemColor === 'red') {
-      // Red gem ceiling: 20%
       return Math.min(probability, 0.20);
     }
   }
@@ -167,18 +132,14 @@ function applyGemAdjustments(
 export async function predictRecruitsBatch(
   recruits: RecruitInput[]
 ): Promise<PredictionResult[]> {
-  // Process all recruits
   const predictions = await Promise.all(recruits.map(predictRecruit));
-
-  // Sort by probability (highest first)
   predictions.sort((a, b) => b.star_elite_probability - a.star_elite_probability);
-
   return predictions;
 }
 
 /**
  * Quick check for high-confidence recruits using only rules
- * Returns null if neural network is needed
+ * Returns null if Random Forest is needed
  */
 export function quickRuleCheck(
   recruit: RecruitInput
