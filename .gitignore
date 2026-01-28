@@ -75,3 +75,6 @@ secrets.json
 
 # Claude
 .claude/
+
+# Planning docs (private)
+PLANNING.md
