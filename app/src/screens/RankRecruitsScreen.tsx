@@ -12,7 +12,8 @@ import { useNavigation } from '@react-navigation/native';
 import { supabase } from '../lib/supabase';
 import { useAuth } from '../context/AuthContext';
 import { Recruit, DevTrait } from '../types';
-import { predictRecruitsBatch, PredictionResult, checkApiHealth } from '../lib/predictionApi';
+import { PredictionResult } from '../lib/predictionApi';
+import { predictRecruitsBatch, isOfflinePredictionReady } from '../lib/offlinePrediction';
 
 const DEV_TRAITS: DevTrait[] = ['normal', 'impact', 'star', 'elite'];
 
@@ -82,14 +83,13 @@ export default function RankRecruitsScreen() {
     setError(null);
 
     try {
-      // Check API health
-      const isHealthy = await checkApiHealth();
-      if (!isHealthy) {
-        throw new Error('Prediction API is not available. Make sure the server is running.');
+      // Check if prediction service is ready
+      if (!isOfflinePredictionReady()) {
+        throw new Error('Prediction model is still loading. Please wait a moment.');
       }
 
-      // Convert recruits to API format
-      const apiInputs = recruits.map(recruit => ({
+      // Convert recruits to prediction format
+      const recruitInputs = recruits.map(recruit => ({
         name: recruit.name,
         position: recruit.position,
         archetype: recruit.archetype,
@@ -109,8 +109,8 @@ export default function RankRecruitsScreen() {
         },
       }));
 
-      // Get predictions
-      const predictions = await predictRecruitsBatch(apiInputs);
+      // Get predictions (runs locally - no network needed!)
+      const predictions = await predictRecruitsBatch(recruitInputs);
 
       // Match predictions to recruits and sort
       const rankedRecruits = recruits.map(recruit => {

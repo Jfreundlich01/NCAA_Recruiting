@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useState, useEffect } from 'react';
 import { StatusBar } from 'expo-status-bar';
 import { NavigationContainer } from '@react-navigation/native';
 import { createStackNavigator } from '@react-navigation/stack';
@@ -9,7 +9,8 @@ import AddRecruitScreen from './src/screens/AddRecruitScreen';
 import RankRecruitsScreen from './src/screens/RankRecruitsScreen';
 import ReportDevTraitScreen from './src/screens/ReportDevTraitScreen';
 import BulkUploadScreen from './src/screens/BulkUploadScreen';
-import { View, ActivityIndicator, StyleSheet } from 'react-native';
+import { View, ActivityIndicator, StyleSheet, Text } from 'react-native';
+import { initOfflinePrediction } from './src/lib/offlinePrediction';
 
 type RootStackParamList = {
   RecruitList: undefined;
@@ -80,6 +81,38 @@ function AppNavigator() {
 }
 
 export default function App() {
+  const [mlReady, setMlReady] = useState(false);
+  const [mlError, setMlError] = useState<string | null>(null);
+
+  // Initialize TensorFlow.js and ML models on app startup
+  useEffect(() => {
+    const initML = async () => {
+      try {
+        console.log('Initializing ML models...');
+        await initOfflinePrediction();
+        setMlReady(true);
+        console.log('ML models ready');
+      } catch (error) {
+        console.error('Failed to initialize ML:', error);
+        setMlError(error instanceof Error ? error.message : 'Failed to load ML models');
+        // Continue anyway - predictions will show an error when attempted
+        setMlReady(true);
+      }
+    };
+
+    initML();
+  }, []);
+
+  // Show loading screen while ML initializes
+  if (!mlReady) {
+    return (
+      <View style={styles.loadingContainer}>
+        <ActivityIndicator size="large" color="#e94560" />
+        <Text style={styles.loadingText}>Loading ML models...</Text>
+      </View>
+    );
+  }
+
   return (
     <AuthProvider>
       <AppNavigator />
@@ -93,5 +126,10 @@ const styles = StyleSheet.create({
     backgroundColor: '#1a1a2e',
     alignItems: 'center',
     justifyContent: 'center',
+  },
+  loadingText: {
+    color: '#888',
+    marginTop: 12,
+    fontSize: 14,
   },
 });
