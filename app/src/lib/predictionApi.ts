@@ -7,7 +7,11 @@
 const API_URL = process.env.EXPO_PUBLIC_PREDICTION_API_URL || 'http://localhost:8000';
 
 export interface RecruitStats {
+  // Shared stats
   awareness?: number;
+  speed?: number;
+  acceleration?: number;
+  // QB stats
   throw_power?: number;
   short_accuracy?: number;
   medium_accuracy?: number;
@@ -15,8 +19,14 @@ export interface RecruitStats {
   throw_on_run?: number;
   under_pressure?: number;
   break_sack?: number;
-  speed?: number;
-  acceleration?: number;
+  // CB stats
+  agility?: number;
+  change_of_direction?: number;
+  man_coverage?: number;
+  zone_coverage?: number;
+  press?: number;
+  tackle?: number;
+  catching?: number;
 }
 
 export interface RecruitInput {
@@ -26,6 +36,7 @@ export interface RecruitInput {
   star_rating?: number;
   gem_color?: string | null;
   stats: RecruitStats;
+  abilities?: string[];
 }
 
 export interface PredictionResult {
@@ -37,6 +48,7 @@ export interface PredictionResult {
   recommendation: string;
   confidence: string;
   ml_model: string;
+  rf_score?: number; // Raw RF model score (for comparison when rules applied)
 }
 
 export interface BatchPredictionResponse {

@@ -14,15 +14,23 @@ import { useNavigation } from '@react-navigation/native';
 import * as ImagePicker from 'expo-image-picker';
 import { supabase } from '../lib/supabase';
 import { useAuth } from '../context/AuthContext';
-import { QB_STAT_CONFIG, US_STATES, QBArchetype, QBPosition, GameVersion, QBStats, QBStatKey } from '../types';
+import {
+  US_STATES,
+  GameVersion,
+  Position,
+  PositionStats,
+  getStatConfigForPosition,
+  getArchetypesForPosition,
+} from '../types';
 
-const QB_ARCHETYPES: QBArchetype[] = ['Pocket Passer', 'Dual Threat', 'Backfield Creator'];
-const QB_POSITIONS: QBPosition[] = ['QB', 'ATH'];
+// Positions we currently support for manual entry
+const SUPPORTED_POSITIONS: Position[] = ['QB', 'CB'];
 const STAR_RATINGS = [1, 2, 3, 4, 5];
 
-// Initialize empty stats object
-const initializeStats = (): Record<QBStatKey, string> => {
-  return QB_STAT_CONFIG.reduce((acc, stat) => ({ ...acc, [stat.key]: '' }), {} as Record<QBStatKey, string>);
+// Initialize empty stats object based on position
+const initializeStats = (position: Position): Record<string, string> => {
+  const statConfig = getStatConfigForPosition(position);
+  return statConfig.reduce((acc, stat) => ({ ...acc, [stat.key]: '' }), {} as Record<string, string>);
 };
 
 export default function AddRecruitScreen() {
@@ -31,8 +39,8 @@ export default function AddRecruitScreen() {
 
   // Form state
   const [name, setName] = useState('');
-  const [position, setPosition] = useState<QBPosition>('QB');
-  const [archetype, setArchetype] = useState<QBArchetype>('Dual Threat');
+  const [position, setPosition] = useState<Position>('QB');
+  const [archetype, setArchetype] = useState<string>('Dual Threat');
   const [starRating, setStarRating] = useState(3);
   const [heightFeet, setHeightFeet] = useState('6');
   const [heightInches, setHeightInches] = useState('2');
@@ -40,10 +48,22 @@ export default function AddRecruitScreen() {
   const [hometown, setHometown] = useState('');
   const [state, setState] = useState('TX');
   const [gameYear, setGameYear] = useState('2026');
-  const [stats, setStats] = useState<Record<QBStatKey, string>>(initializeStats());
+  const [stats, setStats] = useState<Record<string, string>>(initializeStats('QB'));
   const [gemColor, setGemColor] = useState<'green' | 'red' | null>(null);
   const [loading, setLoading] = useState(false);
   const [screenshot, setScreenshot] = useState<string | null>(null);
+
+  // Get current position's config
+  const currentStatConfig = getStatConfigForPosition(position);
+  const currentArchetypes = getArchetypesForPosition(position);
+
+  // Handle position change - reset stats and archetype
+  const handlePositionChange = (newPosition: Position) => {
+    setPosition(newPosition);
+    setStats(initializeStats(newPosition));
+    const archetypes = getArchetypesForPosition(newPosition);
+    setArchetype(archetypes[0]); // Default to first archetype
+  };
 
   const pickImage = async () => {
     const result = await ImagePicker.launchImageLibraryAsync({
@@ -80,14 +100,14 @@ export default function AddRecruitScreen() {
     }
 
     // Build stats object and validate all are filled
-    const statsObject: Partial<QBStats> = {};
-    for (const statConfig of QB_STAT_CONFIG) {
+    const statsObject: Partial<PositionStats> = {};
+    for (const statConfig of currentStatConfig) {
       const value = parseInt(stats[statConfig.key]);
       if (isNaN(value) || value < 0) {
         Alert.alert('Error', `Please enter a valid value for ${statConfig.label}`);
         return;
       }
-      statsObject[statConfig.key] = value;
+      (statsObject as Record<string, number>)[statConfig.key] = value;
     }
 
     setLoading(true);
@@ -105,7 +125,7 @@ export default function AddRecruitScreen() {
       weight_lbs: weightLbs,
       hometown: hometown.trim(),
       state,
-      stats: statsObject as QBStats,
+      stats: statsObject as PositionStats,
       gem_color: gemColor,
       screenshot_url: screenshot,
     });
@@ -137,14 +157,14 @@ export default function AddRecruitScreen() {
 
         <Text style={styles.label}>Position</Text>
         <View style={styles.buttonGroup}>
-          {QB_POSITIONS.map((pos) => (
+          {SUPPORTED_POSITIONS.map((pos) => (
             <TouchableOpacity
               key={pos}
               style={[
                 styles.optionButton,
                 position === pos && styles.optionButtonActive,
               ]}
-              onPress={() => setPosition(pos)}
+              onPress={() => handlePositionChange(pos)}
             >
               <Text
                 style={[
@@ -160,7 +180,7 @@ export default function AddRecruitScreen() {
 
         <Text style={styles.label}>Archetype</Text>
         <View style={styles.buttonGroup}>
-          {QB_ARCHETYPES.map((arch) => (
+          {currentArchetypes.map((arch) => (
             <TouchableOpacity
               key={arch}
               style={[
@@ -318,16 +338,16 @@ export default function AddRecruitScreen() {
           keyboardType="number-pad"
         />
 
-        <Text style={styles.sectionTitle}>Scouted Stats (10)</Text>
+        <Text style={styles.sectionTitle}>{position} Scouted Stats (10)</Text>
 
-        {QB_STAT_CONFIG.map((statConfig) => (
+        {currentStatConfig.map((statConfig) => (
           <View key={statConfig.key} style={styles.statRow}>
             <Text style={styles.statLabel}>{statConfig.label}</Text>
             <TextInput
               style={styles.statInput}
               placeholder="0-99"
               placeholderTextColor="#666"
-              value={stats[statConfig.key]}
+              value={stats[statConfig.key] || ''}
               onChangeText={(value) => setStats({ ...stats, [statConfig.key]: value })}
               keyboardType="number-pad"
               maxLength={2}

@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useCallback } from 'react';
 import {
   View,
   Text,
@@ -8,7 +8,7 @@ import {
   Alert,
   ActivityIndicator,
 } from 'react-native';
-import { useNavigation } from '@react-navigation/native';
+import { useNavigation, useFocusEffect } from '@react-navigation/native';
 import { supabase } from '../lib/supabase';
 import { useAuth } from '../context/AuthContext';
 import { Recruit, DevTrait } from '../types';
@@ -22,6 +22,54 @@ const DEV_TRAIT_COLORS: Record<DevTrait, string> = {
   impact: '#4CAF50',
   star: '#2196F3',
   elite: '#9C27B0',
+};
+
+// Tier colors and labels for ruleset tiers
+type TierInfo = {
+  tier: string;
+  color: string;
+  label: string;
+};
+
+const getTierFromRule = (mlModel: string): TierInfo | null => {
+  if (!mlModel.startsWith('Rule:')) return null;
+
+  const rule = mlModel.replace('Rule: ', '');
+
+  // AVOID tier (negative rules)
+  if (rule.includes('Red Gem') || rule.includes('Field + Slow')) {
+    return { tier: 'AVOID', color: '#f44336', label: 'X' };
+  }
+
+  // TIER 1: Abilities, Athletic Sum ≥370+, Archetype+Stat rules
+  if (
+    rule.includes('Jammer') ||
+    rule.includes('Robber') ||
+    rule.includes('Athletic Sum ≥372') ||
+    rule.includes('Athletic Sum ≥370') ||
+    rule.includes('B&R + Elite AGI') ||
+    rule.includes('Zone + Elite AGI') ||
+    rule.includes('Zone + COD')
+  ) {
+    return { tier: 'T1', color: '#FFD700', label: '1' };
+  }
+
+  // TIER 2: Zone/B&R + Green Gem
+  if (rule.includes('Zone + Green') || rule.includes('B&R + Green')) {
+    return { tier: 'T2', color: '#4CAF50', label: '2' };
+  }
+
+  // TIER 3: Combo rules
+  if (rule.includes('COD+Acc') || rule.includes('Acc+Agi')) {
+    return { tier: 'T3', color: '#2196F3', label: '3' };
+  }
+
+  // TIER 4: Any Green Gem
+  if (rule.includes('Green Gem')) {
+    return { tier: 'T4', color: '#9C27B0', label: '4' };
+  }
+
+  return null;
 };
 
 interface RankedRecruit extends Recruit {
@@ -39,12 +87,14 @@ export default function RankRecruitsScreen() {
   const [recruits, setRecruits] = useState<RankedRecruit[]>([]);
   const [error, setError] = useState<string | null>(null);
 
-  // Fetch user's recruits without dev trait on mount
-  useEffect(() => {
-    if (user?.id) {
-      fetchPendingRecruits();
-    }
-  }, [user?.id]);
+  // Fetch user's recruits without dev trait when screen is focused
+  useFocusEffect(
+    useCallback(() => {
+      if (user?.id) {
+        fetchPendingRecruits();
+      }
+    }, [user?.id])
+  );
 
   const fetchPendingRecruits = async () => {
     if (!user) {
@@ -89,13 +139,16 @@ export default function RankRecruitsScreen() {
       }
 
       // Convert recruits to prediction format
+      // Pass ALL stats (QB and CB) - the prediction engine will use what it needs
       const recruitInputs = recruits.map(recruit => ({
         name: recruit.name,
         position: recruit.position,
         archetype: recruit.archetype,
         star_rating: recruit.star_rating,
         gem_color: recruit.gem_color || null,
+        abilities: recruit.abilities || [],
         stats: {
+          // QB stats
           awareness: recruit.stats?.awareness || 0,
           throw_power: recruit.stats?.throw_power || 0,
           short_accuracy: recruit.stats?.short_accuracy || 0,
@@ -106,6 +159,14 @@ export default function RankRecruitsScreen() {
           break_sack: recruit.stats?.break_sack || 0,
           speed: recruit.stats?.speed || 0,
           acceleration: recruit.stats?.acceleration || 0,
+          // CB stats
+          agility: recruit.stats?.agility || 0,
+          change_of_direction: recruit.stats?.change_of_direction || 0,
+          man_coverage: recruit.stats?.man_coverage || 0,
+          zone_coverage: recruit.stats?.zone_coverage || 0,
+          press: recruit.stats?.press || 0,
+          tackle: recruit.stats?.tackle || 0,
+          catching: recruit.stats?.catching || 0,
         },
       }));
 
@@ -148,10 +209,13 @@ export default function RankRecruitsScreen() {
     setSaving(true);
 
     try {
+      // Capitalize dev trait for consistency (e.g., 'normal' -> 'Normal')
+      const capitalizedTrait = recruit.selectedDevTrait!.charAt(0).toUpperCase() + recruit.selectedDevTrait!.slice(1);
+
       const { error: updateError } = await supabase
         .from('recruits')
         .update({
-          ocr_dev_trait: recruit.selectedDevTrait,
+          ocr_dev_trait: capitalizedTrait,
           predicted_dev_trait: recruit.prediction?.star_elite_percentage && recruit.prediction.star_elite_percentage >= 50 ? 'star' : 'impact',
           prediction_confidence: recruit.prediction ? {
             star_elite_probability: recruit.prediction.star_elite_probability,
@@ -185,10 +249,13 @@ export default function RankRecruitsScreen() {
 
     try {
       for (const recruit of recruitsWithTraits) {
+        // Capitalize dev trait for consistency (e.g., 'normal' -> 'Normal')
+        const capitalizedTrait = recruit.selectedDevTrait!.charAt(0).toUpperCase() + recruit.selectedDevTrait!.slice(1);
+
         const { error: updateError } = await supabase
           .from('recruits')
           .update({
-            ocr_dev_trait: recruit.selectedDevTrait,
+            ocr_dev_trait: capitalizedTrait,
             predicted_dev_trait: recruit.prediction?.star_elite_percentage && recruit.prediction.star_elite_percentage >= 50 ? 'star' : 'impact',
             prediction_confidence: recruit.prediction ? {
               star_elite_probability: recruit.prediction.star_elite_probability,
@@ -254,15 +321,35 @@ export default function RankRecruitsScreen() {
         {/* Prediction result */}
         {recruit.prediction && (
           <View style={styles.predictionBox}>
-            <Text style={styles.predictionChance}>
-              {recruit.prediction.star_elite_percentage}% Star/Elite
-            </Text>
+            <View style={styles.predictionHeader}>
+              <Text style={styles.predictionChance}>
+                {recruit.prediction.star_elite_percentage}% Star/Elite
+              </Text>
+              {/* Tier badge */}
+              {(() => {
+                const tierInfo = getTierFromRule(recruit.prediction.ml_model);
+                if (tierInfo) {
+                  return (
+                    <View style={[styles.tierBadge, { backgroundColor: tierInfo.color }]}>
+                      <Text style={styles.tierBadgeText}>{tierInfo.tier}</Text>
+                    </View>
+                  );
+                }
+                return null;
+              })()}
+            </View>
             <Text style={styles.predictionRec}>
               {recruit.prediction.recommendation}
             </Text>
             <Text style={styles.predictionModel}>
               {recruit.prediction.ml_model}
             </Text>
+            {recruit.prediction.rf_score !== undefined &&
+             recruit.prediction.ml_model.startsWith('Rule:') && (
+              <Text style={styles.rfScore}>
+                RF: {Math.round(recruit.prediction.rf_score * 100)}%
+              </Text>
+            )}
           </View>
         )}
       </View>
@@ -321,6 +408,32 @@ export default function RankRecruitsScreen() {
             ? 'No pending recruits. Add recruits first!'
             : `${recruits.length} recruit(s) pending dev trait`}
         </Text>
+
+        {/* Tier legend */}
+        {hasPredictions && (
+          <View style={styles.tierLegend}>
+            <View style={styles.tierLegendItem}>
+              <View style={[styles.tierDot, { backgroundColor: '#FFD700' }]} />
+              <Text style={styles.tierLegendText}>T1 93%</Text>
+            </View>
+            <View style={styles.tierLegendItem}>
+              <View style={[styles.tierDot, { backgroundColor: '#4CAF50' }]} />
+              <Text style={styles.tierLegendText}>T2 79%</Text>
+            </View>
+            <View style={styles.tierLegendItem}>
+              <View style={[styles.tierDot, { backgroundColor: '#2196F3' }]} />
+              <Text style={styles.tierLegendText}>T3 68%</Text>
+            </View>
+            <View style={styles.tierLegendItem}>
+              <View style={[styles.tierDot, { backgroundColor: '#9C27B0' }]} />
+              <Text style={styles.tierLegendText}>T4 61%</Text>
+            </View>
+            <View style={styles.tierLegendItem}>
+              <View style={[styles.tierDot, { backgroundColor: '#f44336' }]} />
+              <Text style={styles.tierLegendText}>AVOID</Text>
+            </View>
+          </View>
+        )}
 
         {error && (
           <View style={styles.errorBox}>
@@ -403,7 +516,31 @@ const styles = StyleSheet.create({
   subtitle: {
     fontSize: 14,
     color: '#888',
-    marginBottom: 20,
+    marginBottom: 8,
+  },
+  tierLegend: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 12,
+    marginBottom: 16,
+    paddingVertical: 8,
+    paddingHorizontal: 4,
+    backgroundColor: 'rgba(255,255,255,0.05)',
+    borderRadius: 8,
+  },
+  tierLegendItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+  },
+  tierDot: {
+    width: 12,
+    height: 12,
+    borderRadius: 6,
+  },
+  tierLegendText: {
+    color: '#aaa',
+    fontSize: 11,
   },
   errorBox: {
     backgroundColor: 'rgba(244, 67, 54, 0.2)',
@@ -486,10 +623,27 @@ const styles = StyleSheet.create({
     borderTopWidth: 1,
     borderTopColor: '#333',
   },
+  predictionHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+  },
   predictionChance: {
     color: '#4CAF50',
     fontSize: 16,
     fontWeight: '600',
+  },
+  tierBadge: {
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+    borderRadius: 4,
+    minWidth: 36,
+    alignItems: 'center',
+  },
+  tierBadgeText: {
+    color: '#fff',
+    fontSize: 11,
+    fontWeight: 'bold',
   },
   predictionRec: {
     color: '#ffd700',
@@ -498,6 +652,12 @@ const styles = StyleSheet.create({
   },
   predictionModel: {
     color: '#555',
+    fontSize: 10,
+    marginTop: 2,
+    fontStyle: 'italic',
+  },
+  rfScore: {
+    color: '#888',
     fontSize: 10,
     marginTop: 2,
     fontStyle: 'italic',

@@ -36,30 +36,26 @@ GEM COLOR INSTRUCTIONS:
 - If you see a red gem, return "red"
 - If no gem is visible or you cannot determine the color, return null
 
+POSITION-SPECIFIC ATTRIBUTES:
+Different positions have different stats shown. Extract ONLY the attributes visible on the screen.
+
+For QB recruits, look for: awareness, throw_power, short_accuracy, medium_accuracy, deep_accuracy, throw_on_run, under_pressure, break_sack, speed, acceleration
+
+For CB recruits, look for: awareness, speed, acceleration, change_of_direction, agility, man_coverage, zone_coverage, press, catching, tackle
+
 Extract the following fields:
 {
   "name": string,
   "star_rating": number (1-5, count the stars carefully),
   "gem_color": string or null ("green", "red", or null if not visible),
-  "position": string,
+  "position": string (e.g., "QB", "CB"),
   "archetype": string,
   "class": string,
   "hometown": string,
   "state": string,
   "height_inches": number,
   "weight_lbs": number,
-  "attributes": {
-    "awareness": number,
-    "throw_power": number,
-    "short_accuracy": number,
-    "medium_accuracy": number,
-    "deep_accuracy": number,
-    "throw_on_run": number,
-    "under_pressure": number,
-    "break_sack": number,
-    "speed": number,
-    "acceleration": number
-  },
+  "attributes": { ... stats visible on screen using snake_case keys ... },
   "abilities": string[],
   "mentals": string[],
   "development_trait": string
@@ -68,44 +64,57 @@ Extract the following fields:
 If an attribute or mental trait is not visible, set it to null or an empty array. Return ONLY the JSON object. No explanations.`;
 
 Deno.serve(async (req) => {
+  console.log("=== EDGE FUNCTION START ===");
+  console.log("Method:", req.method);
+
   // Handle CORS preflight
   if (req.method === "OPTIONS") {
+    console.log("Handling OPTIONS preflight");
     return new Response("ok", { headers: corsHeaders });
   }
 
   try {
-    const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
-    const supabaseServiceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
-    const supabaseAnonKey = Deno.env.get("SUPABASE_ANON_KEY")!;
-    const anthropicApiKey = Deno.env.get("ANTHROPIC_API_KEY")!;
+    console.log("Step 1: Reading environment variables...");
+    const supabaseUrl = Deno.env.get("SUPABASE_URL");
+    const supabaseServiceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY");
+    const supabaseAnonKey = Deno.env.get("SUPABASE_ANON_KEY");
+    const anthropicApiKey = Deno.env.get("ANTHROPIC_API_KEY");
 
-    // Create a client with the user's JWT to verify they're authenticated
-    const authHeader = req.headers.get("Authorization");
-    if (!authHeader) {
-      return new Response(
-        JSON.stringify({ error: "Missing authorization header" }),
-        { status: 401, headers: { ...corsHeaders, "Content-Type": "application/json" } }
-      );
+    console.log("ENV CHECK - SUPABASE_URL:", supabaseUrl ? "SET" : "MISSING");
+    console.log("ENV CHECK - SUPABASE_SERVICE_ROLE_KEY:", supabaseServiceKey ? "SET (length: " + supabaseServiceKey.length + ")" : "MISSING");
+    console.log("ENV CHECK - SUPABASE_ANON_KEY:", supabaseAnonKey ? "SET" : "MISSING");
+    console.log("ENV CHECK - ANTHROPIC_API_KEY:", anthropicApiKey ? "SET (length: " + anthropicApiKey.length + ")" : "MISSING");
+
+    if (!supabaseUrl || !supabaseServiceKey || !anthropicApiKey) {
+      const missing = [];
+      if (!supabaseUrl) missing.push("SUPABASE_URL");
+      if (!supabaseServiceKey) missing.push("SUPABASE_SERVICE_ROLE_KEY");
+      if (!anthropicApiKey) missing.push("ANTHROPIC_API_KEY");
+      throw new Error(`Missing required environment variables: ${missing.join(", ")}`);
     }
 
-    // Verify the user's JWT
-    const userSupabase = createClient(supabaseUrl, supabaseAnonKey, {
-      global: { headers: { Authorization: authHeader } },
-    });
-
-    const { data: { user }, error: authError } = await userSupabase.auth.getUser();
-    if (authError || !user) {
-      return new Response(
-        JSON.stringify({ error: "Invalid or expired token" }),
-        { status: 401, headers: { ...corsHeaders, "Content-Type": "application/json" } }
-      );
-    }
-
-    // Use service role client for database operations
+    console.log("Step 2: Creating Supabase client...");
     const supabase = createClient(supabaseUrl, supabaseServiceKey);
-    const anthropic = new Anthropic({ apiKey: anthropicApiKey });
+    console.log("Supabase client created");
 
-    const { batch_id } = await req.json();
+    console.log("Step 3: Creating Anthropic client...");
+    const anthropic = new Anthropic({ apiKey: anthropicApiKey });
+    console.log("Anthropic client created");
+
+    console.log("Step 4: Parsing request body...");
+    const bodyText = await req.text();
+    console.log("Raw body:", bodyText);
+
+    let batch_id: string;
+    try {
+      const parsed = JSON.parse(bodyText);
+      batch_id = parsed.batch_id;
+    } catch (parseError) {
+      console.error("JSON parse error:", parseError);
+      throw new Error(`Invalid JSON in request body: ${bodyText}`);
+    }
+
+    console.log("Parsed batch_id:", batch_id);
 
     if (!batch_id) {
       return new Response(
@@ -355,9 +364,34 @@ Deno.serve(async (req) => {
     );
 
   } catch (err) {
-    const errorMessage = err instanceof Error ? err.message : "Unknown error";
+    console.error("=== FATAL ERROR ===");
+    console.error("Error type:", typeof err);
+    console.error("Error:", err);
+
+    let errorDetails: Record<string, unknown> = {};
+
+    if (err instanceof Error) {
+      errorDetails = {
+        message: err.message,
+        name: err.name,
+        stack: err.stack,
+      };
+    } else if (typeof err === 'object' && err !== null) {
+      errorDetails = {
+        message: JSON.stringify(err),
+        type: typeof err,
+      };
+    } else {
+      errorDetails = {
+        message: String(err),
+        type: typeof err,
+      };
+    }
+
+    console.error("Error details:", JSON.stringify(errorDetails));
+
     return new Response(
-      JSON.stringify({ error: errorMessage }),
+      JSON.stringify({ error: errorDetails.message, details: errorDetails }),
       { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
     );
   }

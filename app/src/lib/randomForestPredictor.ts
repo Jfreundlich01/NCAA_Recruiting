@@ -22,6 +22,7 @@ interface RandomForestModel {
 // Load models from bundled JSON
 import dualThreatRF from '../../assets/models/dual_threat/rf_model.json';
 import binaryRF from '../../assets/models/binary/rf_model.json';
+import cbRF from '../../assets/models/cb/rf_model.json';
 
 // Also load normalization params (for feature names reference)
 import dualThreatNorm from '../../assets/models/dual_threat/normalization.json';
@@ -36,13 +37,14 @@ export async function initRandomForest(): Promise<void> {
   if (isInitialized) return;
 
   // Validate models loaded
-  if (!dualThreatRF?.trees || !binaryRF?.trees) {
+  if (!dualThreatRF?.trees || !binaryRF?.trees || !cbRF?.trees) {
     throw new Error('Failed to load Random Forest models');
   }
 
   console.log(`Random Forest loaded:`);
   console.log(`  Dual Threat: ${dualThreatRF.n_estimators} trees, ${dualThreatRF.n_features} features`);
   console.log(`  Binary: ${binaryRF.n_estimators} trees, ${binaryRF.n_features} features`);
+  console.log(`  CB: ${cbRF.n_estimators} trees, ${cbRF.n_features} features`);
 
   isInitialized = true;
   console.log('Random Forest predictor ready');
@@ -125,9 +127,32 @@ export async function predictBinary(features: number[]): Promise<number> {
 /**
  * Get feature names for a model (useful for debugging)
  */
-export function getFeatureNames(modelType: 'dual_threat' | 'binary'): string[] {
+export function getFeatureNames(modelType: 'dual_threat' | 'binary' | 'cb'): string[] {
+  if (modelType === 'cb') {
+    return cbRF.feature_names;
+  }
   const model = modelType === 'dual_threat' ? dualThreatRF : binaryRF;
   return model.feature_names;
+}
+
+/**
+ * Check if CB model is ready
+ */
+export function isCBModelReady(): boolean {
+  return isInitialized && !!cbRF?.trees;
+}
+
+/**
+ * Predict with CB Random Forest
+ * @param features - Raw feature values (17 features, same order as training)
+ * @returns Probability of Star/Elite (0-1)
+ */
+export async function predictCB(features: number[]): Promise<number> {
+  if (!isInitialized) {
+    throw new Error('Random Forest not initialized. Call initRandomForest() first.');
+  }
+
+  return predictRandomForest(cbRF as RandomForestModel, features);
 }
 
 /**

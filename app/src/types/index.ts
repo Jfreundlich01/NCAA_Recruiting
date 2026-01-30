@@ -10,6 +10,9 @@ export type Position = 'QB' | 'RB' | 'WR' | 'TE' | 'OL' | 'DL' | 'LB' | 'CB' | '
 // QB Archetypes (correct values for NCAA game)
 export type QBArchetype = 'Pocket Passer' | 'Dual Threat' | 'Backfield Creator';
 
+// CB Archetypes
+export type CBArchetype = 'Boundary' | 'Bump and Run' | 'Field' | 'Zone';
+
 // Positions for QB/ATH recruiting
 export type QBPosition = 'QB' | 'ATH';
 
@@ -43,6 +46,23 @@ export interface QBStats {
   acceleration: number;
 }
 
+// CB stats as flat object keys (for JSONB storage)
+export interface CBStats {
+  awareness: number;
+  speed: number;
+  acceleration: number;
+  change_of_direction: number;
+  agility: number;
+  man_coverage: number;
+  zone_coverage: number;
+  press: number;
+  catching: number;
+  tackle: number;
+}
+
+// Union type for all position stats
+export type PositionStats = QBStats | CBStats;
+
 // Main recruit type
 export interface Recruit {
   id: string;
@@ -66,7 +86,7 @@ export interface Recruit {
   state: string;
 
   // The 10 scoutable stats (flat JSONB object)
-  stats: QBStats; // Will be a union type when we add more positions
+  stats: PositionStats;
 
   // New fields from enhanced OCR
   class?: string; // Freshman, Sophomore, Junior, Senior
@@ -108,7 +128,7 @@ export interface CreateRecruitInput {
   weight_lbs: number;
   hometown: string;
   state: string;
-  stats: QBStats;
+  stats: PositionStats;
   screenshot_url?: string;
 }
 
@@ -127,6 +147,44 @@ export const QB_STAT_CONFIG = [
 ] as const;
 
 export type QBStatKey = typeof QB_STAT_CONFIG[number]['key'];
+
+// CB stat definitions - display names and keys
+export const CB_STAT_CONFIG = [
+  { key: 'awareness', label: 'Awareness' },
+  { key: 'speed', label: 'Speed' },
+  { key: 'acceleration', label: 'Acceleration' },
+  { key: 'change_of_direction', label: 'Change of Direction' },
+  { key: 'agility', label: 'Agility' },
+  { key: 'man_coverage', label: 'Man Coverage' },
+  { key: 'zone_coverage', label: 'Zone Coverage' },
+  { key: 'press', label: 'Press' },
+  { key: 'catching', label: 'Catching' },
+  { key: 'tackle', label: 'Tackle' },
+] as const;
+
+export type CBStatKey = typeof CB_STAT_CONFIG[number]['key'];
+
+// Helper to get stat config by position
+export function getStatConfigForPosition(position: Position) {
+  switch (position) {
+    case 'CB':
+      return CB_STAT_CONFIG;
+    case 'QB':
+    default:
+      return QB_STAT_CONFIG;
+  }
+}
+
+// Helper to get archetypes by position
+export function getArchetypesForPosition(position: Position): string[] {
+  switch (position) {
+    case 'CB':
+      return ['Boundary', 'Bump and Run', 'Field', 'Zone'];
+    case 'QB':
+    default:
+      return ['Pocket Passer', 'Dual Threat', 'Backfield Creator'];
+  }
+}
 
 // US States for dropdown
 export const US_STATES = [

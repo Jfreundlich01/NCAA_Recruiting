@@ -31,8 +31,12 @@ export default function BulkUploadScreen() {
   const [selectedImages, setSelectedImages] = useState<SelectedImage[]>([]);
   const [uploading, setUploading] = useState(false);
   const [processing, setProcessing] = useState(false);
+  const [currentBatchId, setCurrentBatchId] = useState<string | null>(null);
   const [batches, setBatches] = useState<ScreenshotBatch[]>([]);
   const [loadingBatches, setLoadingBatches] = useState(true);
+
+  // Prevent operations while busy
+  const isBusy = uploading || processing;
 
   useEffect(() => {
     fetchBatches();
@@ -57,6 +61,11 @@ export default function BulkUploadScreen() {
   };
 
   const pickImages = async () => {
+    if (isBusy) {
+      Alert.alert('Please Wait', 'Please wait for current operation to complete.');
+      return;
+    }
+
     const result = await ImagePicker.launchImageLibraryAsync({
       mediaTypes: ['images'],
       allowsMultipleSelection: true,
@@ -77,9 +86,10 @@ export default function BulkUploadScreen() {
   };
 
   const uploadBatch = async () => {
-    if (!user || selectedImages.length === 0) return;
+    if (!user || selectedImages.length === 0 || isBusy) return;
 
     setUploading(true);
+    setCurrentBatchId(null);
 
     try {
       // Create batch record
@@ -94,6 +104,8 @@ export default function BulkUploadScreen() {
         .single();
 
       if (batchError) throw batchError;
+
+      setCurrentBatchId(batch.id);
 
       // Upload each image
       for (let i = 0; i < selectedImages.length; i++) {
@@ -133,25 +145,47 @@ export default function BulkUploadScreen() {
         }
       }
 
-      Alert.alert('Success', `Uploaded ${selectedImages.length} screenshots. Starting processing...`);
+      // Clear selected images BEFORE starting processing
+      const imagesToProcess = selectedImages.length;
       setSelectedImages([]);
+      setUploading(false);
+
+      Alert.alert('Success', `Uploaded ${imagesToProcess} screenshots. Starting processing...`);
       fetchBatches();
 
-      // Trigger processing
-      processBatch(batch.id);
+      // Trigger processing (uploading is done, now processing starts)
+      await processBatch(batch.id);
 
     } catch (error) {
       console.error('Upload error:', error);
       Alert.alert('Error', 'Failed to upload screenshots');
-    } finally {
       setUploading(false);
+      setCurrentBatchId(null);
     }
   };
 
   const processBatch = async (batchId: string) => {
+    if (processing) {
+      console.log('Already processing, skipping...');
+      return;
+    }
+
     setProcessing(true);
+    setCurrentBatchId(batchId);
 
     try {
+      // Get the current session for debugging
+      const { data: { session } } = await supabase.auth.getSession();
+      console.log('Session exists:', !!session);
+      console.log('Token preview:', session?.access_token?.substring(0, 50) + '...');
+      console.log('Token length:', session?.access_token?.length);
+
+      if (!session?.access_token) {
+        Alert.alert('Error', 'Not authenticated. Please log out and log back in.');
+        return;
+      }
+
+      // Use supabase.functions.invoke which should handle auth automatically
       const { data, error } = await supabase.functions.invoke('process-screenshots', {
         body: { batch_id: batchId },
       });
@@ -178,6 +212,7 @@ export default function BulkUploadScreen() {
       Alert.alert('Error', 'Failed to process screenshots: ' + (error instanceof Error ? error.message : String(error)));
     } finally {
       setProcessing(false);
+      setCurrentBatchId(null);
     }
   };
 
@@ -195,15 +230,21 @@ export default function BulkUploadScreen() {
       <Text style={styles.title}>Bulk Screenshot Upload</Text>
       <Text style={styles.subtitle}>Dev Mode - Upload multiple recruit screenshots for OCR processing</Text>
 
-      <TouchableOpacity style={styles.pickButton} onPress={pickImages}>
-        <Text style={styles.pickButtonText}>
+      <TouchableOpacity
+        style={[styles.pickButton, isBusy && styles.pickButtonDisabled]}
+        onPress={pickImages}
+        disabled={isBusy}
+      >
+        <Text style={[styles.pickButtonText, isBusy && styles.pickButtonTextDisabled]}>
           {selectedImages.length > 0
             ? `${selectedImages.length} image${selectedImages.length > 1 ? 's' : ''} selected`
+            : isBusy
+            ? 'Please wait...'
             : 'Select Screenshots'}
         </Text>
       </TouchableOpacity>
 
-      {selectedImages.length > 0 && (
+      {selectedImages.length > 0 && !processing && (
         <TouchableOpacity
           style={[styles.uploadButton, uploading && styles.buttonDisabled]}
           onPress={uploadBatch}
@@ -246,10 +287,13 @@ export default function BulkUploadScreen() {
             </Text>
             {batch.status === 'pending' && (
               <TouchableOpacity
-                style={styles.retryButton}
+                style={[styles.retryButton, isBusy && styles.buttonDisabled]}
                 onPress={() => processBatch(batch.id)}
+                disabled={isBusy}
               >
-                <Text style={styles.retryButtonText}>Process Now</Text>
+                <Text style={styles.retryButtonText}>
+                  {currentBatchId === batch.id ? 'Processing...' : 'Process Now'}
+                </Text>
               </TouchableOpacity>
             )}
           </View>
@@ -291,6 +335,13 @@ const styles = StyleSheet.create({
   pickButtonText: {
     color: '#888',
     fontSize: 16,
+  },
+  pickButtonDisabled: {
+    opacity: 0.5,
+    borderColor: '#222',
+  },
+  pickButtonTextDisabled: {
+    color: '#555',
   },
   uploadButton: {
     backgroundColor: '#e94560',

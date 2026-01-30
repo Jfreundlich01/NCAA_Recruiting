@@ -6,8 +6,8 @@
 
 import { RecruitInput } from './predictionApi';
 
-// Raw stat columns in exact order
-const STAT_COLUMNS = [
+// QB stat columns in exact order
+const QB_STAT_COLUMNS = [
   'awareness',
   'throw_power',
   'short_accuracy',
@@ -18,6 +18,20 @@ const STAT_COLUMNS = [
   'break_sack',
   'speed',
   'acceleration',
+] as const;
+
+// CB stat columns in exact order
+const CB_STAT_COLUMNS = [
+  'awareness',
+  'speed',
+  'acceleration',
+  'change_of_direction',
+  'agility',
+  'man_coverage',
+  'zone_coverage',
+  'press',
+  'catching',
+  'tackle',
 ] as const;
 
 // Normalization parameters loaded from JSON files
@@ -134,6 +148,86 @@ export function engineerBinaryFeatures(recruit: RecruitInput): number[] {
   features.push(archetype === 'backfield_creator' ? 1 : 0); // arch_backfield_creator
   features.push(archetype === 'dual_threat' ? 1 : 0); // arch_dual_threat
   features.push(archetype === 'pure_runner' ? 1 : 0); // arch_pure_runner
+
+  return features;
+}
+
+/**
+ * Engineer features for CB model (31 features)
+ * Structure: 10 raw stats + star_rating + 2 gem + 4 archetype + 14 engineered
+ */
+export function engineerCBFeatures(recruit: RecruitInput): number[] {
+  const stats = recruit.stats as Record<string, number>;
+  const features: number[] = [];
+
+  // 1. Raw stats (10 features) - in exact order matching CB_STAT_COLUMNS
+  const awareness = stats.awareness || 0;
+  const speed = stats.speed || 0;
+  const acceleration = stats.acceleration || 0;
+  const changeOfDirection = stats.change_of_direction || 0;
+  const agility = stats.agility || 0;
+  const manCoverage = stats.man_coverage || 0;
+  const zoneCoverage = stats.zone_coverage || 0;
+  const press = stats.press || 0;
+  const catching = stats.catching || 0;
+  const tackle = stats.tackle || 0;
+
+  features.push(awareness);
+  features.push(speed);
+  features.push(acceleration);
+  features.push(changeOfDirection);
+  features.push(agility);
+  features.push(manCoverage);
+  features.push(zoneCoverage);
+  features.push(press);
+  features.push(catching);
+  features.push(tackle);
+
+  // 2. Star rating (1 feature)
+  features.push(recruit.star_rating || 3);
+
+  // 3. Gem encoding (2 features)
+  features.push(recruit.gem_color === 'green' ? 1 : 0); // gem_green
+  features.push(recruit.gem_color === 'red' ? 1 : 0); // gem_red
+
+  // 4. Archetype one-hot encoding (4 features) - CB archetypes
+  const archetype = (recruit.archetype || '').toLowerCase().replace(/ /g, '_');
+  features.push(archetype === 'boundary' ? 1 : 0); // arch_boundary
+  features.push(archetype === 'bump_and_run' ? 1 : 0); // arch_bump_and_run
+  features.push(archetype === 'field' ? 1 : 0); // arch_field
+  features.push(archetype === 'zone' ? 1 : 0); // arch_zone
+
+  // 5. Threshold features (6 features) - based on data analysis
+  features.push(changeOfDirection >= 92 ? 1 : 0); // elite_cod
+  features.push(acceleration >= 94 ? 1 : 0); // elite_acc
+  features.push(agility >= 92 ? 1 : 0); // elite_agi
+  features.push(speed >= 93 ? 1 : 0); // elite_spd
+  features.push(manCoverage >= 78 ? 1 : 0); // high_man
+  features.push(speed >= 92 ? 1 : 0); // high_spd
+
+  // 6. Combo features (4 features) - based on data analysis
+  features.push(changeOfDirection >= 92 && acceleration >= 94 && agility >= 92 ? 1 : 0); // triple_athletic
+  features.push(speed >= 92 && acceleration >= 94 ? 1 : 0); // speed_acc_combo
+  features.push(acceleration >= 94 && agility >= 91 ? 1 : 0); // acc_agi_combo
+  features.push(changeOfDirection >= 91 && acceleration >= 94 ? 1 : 0); // cod_acc_combo
+
+  // 7. Athletic stat count (1 feature)
+  const eliteAthleticCount =
+    (changeOfDirection >= 90 ? 1 : 0) +
+    (acceleration >= 93 ? 1 : 0) +
+    (agility >= 90 ? 1 : 0) +
+    (speed >= 91 ? 1 : 0);
+  features.push(eliteAthleticCount);
+
+  // 8. Athletic Sum thresholds (2 features) - SPD + ACC + AGI + COD
+  const athleticSum = speed + acceleration + agility + changeOfDirection;
+  features.push(athleticSum >= 368 ? 1 : 0); // high_athletic_sum
+  features.push(athleticSum >= 366 ? 1 : 0); // good_athletic_sum
+
+  // 9. Archetype + Speed interaction feature (1 feature) - slow CBs in speed-dependent roles
+  // Note: archetype already defined above at line 194
+  features.push(archetype === 'field' && speed < 87 ? 1 : 0); // field_slow
+  // Note: boundary_slow removed - only n=6 samples
 
   return features;
 }
