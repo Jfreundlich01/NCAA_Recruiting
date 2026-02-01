@@ -27,6 +27,12 @@ export interface RecruitStats {
   press?: number;
   tackle?: number;
   catching?: number;
+  // WR stats
+  catch_in_traffic?: number;
+  spectacular_catch?: number;
+  short_route?: number;
+  medium_route?: number;
+  deep_route?: number;
 }
 
 export interface RecruitInput {

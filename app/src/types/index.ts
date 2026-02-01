@@ -13,8 +13,14 @@ export type QBArchetype = 'Pocket Passer' | 'Dual Threat' | 'Backfield Creator';
 // CB Archetypes
 export type CBArchetype = 'Boundary' | 'Bump and Run' | 'Field' | 'Zone';
 
+// WR Archetypes
+export type WRArchetype = 'Speedster' | 'Route Artist' | 'Contested Specialist' | 'Physical Route Runner' | 'Elusive Route Runner' | 'Gritty Possession' | 'Gadget';
+
 // Positions for QB/ATH recruiting
 export type QBPosition = 'QB' | 'ATH';
+
+// Positions for WR/ATH recruiting
+export type WRPosition = 'WR' | 'ATH';
 
 // Recruit class year
 export type RecruitClass = 'Freshman' | 'Sophomore' | 'Junior' | 'Senior';
@@ -60,8 +66,22 @@ export interface CBStats {
   tackle: number;
 }
 
+// WR stats as flat object keys (for JSONB storage)
+export interface WRStats {
+  awareness: number;
+  speed: number;
+  acceleration: number;
+  catching: number;
+  catch_in_traffic: number;
+  spectacular_catch: number;
+  short_route: number;
+  medium_route: number;
+  deep_route: number;
+  agility: number;
+}
+
 // Union type for all position stats
-export type PositionStats = QBStats | CBStats;
+export type PositionStats = QBStats | CBStats | WRStats;
 
 // Main recruit type
 export interface Recruit {
@@ -164,11 +184,29 @@ export const CB_STAT_CONFIG = [
 
 export type CBStatKey = typeof CB_STAT_CONFIG[number]['key'];
 
+// WR stat definitions - display names and keys
+export const WR_STAT_CONFIG = [
+  { key: 'awareness', label: 'Awareness' },
+  { key: 'speed', label: 'Speed' },
+  { key: 'acceleration', label: 'Acceleration' },
+  { key: 'catching', label: 'Catching' },
+  { key: 'catch_in_traffic', label: 'Catch in Traffic' },
+  { key: 'spectacular_catch', label: 'Spectacular Catch' },
+  { key: 'short_route', label: 'Short Route' },
+  { key: 'medium_route', label: 'Medium Route' },
+  { key: 'deep_route', label: 'Deep Route' },
+  { key: 'agility', label: 'Agility' },
+] as const;
+
+export type WRStatKey = typeof WR_STAT_CONFIG[number]['key'];
+
 // Helper to get stat config by position
-export function getStatConfigForPosition(position: Position) {
+export function getStatConfigForPosition(position: Position | 'ATH') {
   switch (position) {
     case 'CB':
       return CB_STAT_CONFIG;
+    case 'WR':
+      return WR_STAT_CONFIG;
     case 'QB':
     default:
       return QB_STAT_CONFIG;
@@ -176,14 +214,42 @@ export function getStatConfigForPosition(position: Position) {
 }
 
 // Helper to get archetypes by position
-export function getArchetypesForPosition(position: Position): string[] {
+export function getArchetypesForPosition(position: Position | 'ATH'): string[] {
   switch (position) {
     case 'CB':
       return ['Boundary', 'Bump and Run', 'Field', 'Zone'];
+    case 'WR':
+      return ['Speedster', 'Route Artist', 'Contested Specialist', 'Physical Route Runner', 'Elusive Route Runner', 'Gritty Possession', 'Gadget'];
     case 'QB':
     default:
       return ['Pocket Passer', 'Dual Threat', 'Backfield Creator'];
   }
+}
+
+// QB archetypes (for ATH detection)
+export const QB_ARCHETYPES = ['Pocket Passer', 'Dual Threat', 'Backfield Creator'];
+
+// WR archetypes (for ATH detection)
+export const WR_ARCHETYPES = ['Speedster', 'Route Artist', 'Contested Specialist', 'Physical Route Runner', 'Elusive Route Runner', 'Gritty Possession', 'Gadget'];
+
+// CB archetypes
+export const CB_ARCHETYPES = ['Boundary', 'Bump and Run', 'Field', 'Zone'];
+
+// Helper to determine effective position (handles ATH)
+export function getEffectivePosition(position: string, archetype: string): 'QB' | 'WR' | 'CB' | string {
+  // If position is explicit, use it
+  if (position === 'QB') return 'QB';
+  if (position === 'WR') return 'WR';
+  if (position === 'CB') return 'CB';
+
+  // For ATH, determine by archetype
+  if (position === 'ATH') {
+    if (QB_ARCHETYPES.includes(archetype)) return 'QB';
+    if (WR_ARCHETYPES.includes(archetype)) return 'WR';
+    if (CB_ARCHETYPES.includes(archetype)) return 'CB';
+  }
+
+  return position; // fallback
 }
 
 // US States for dropdown

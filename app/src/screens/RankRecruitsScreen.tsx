@@ -167,6 +167,12 @@ export default function RankRecruitsScreen() {
           press: recruit.stats?.press || 0,
           tackle: recruit.stats?.tackle || 0,
           catching: recruit.stats?.catching || 0,
+          // WR stats
+          catch_in_traffic: recruit.stats?.catch_in_traffic || 0,
+          spectacular_catch: recruit.stats?.spectacular_catch || 0,
+          short_route: recruit.stats?.short_route || 0,
+          medium_route: recruit.stats?.medium_route || 0,
+          deep_route: recruit.stats?.deep_route || 0,
         },
       }));
 

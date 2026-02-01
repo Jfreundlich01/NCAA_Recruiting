@@ -6,6 +6,7 @@
 
 import { RecruitInput, PredictionResult } from './predictionApi';
 import { applyRules, getRecommendation, getConfidence } from './predictionEngine';
+import { getEffectivePosition, WR_ARCHETYPES } from '../types';
 import {
   engineerDualThreatFeatures,
   engineerBinaryFeatures,
@@ -54,12 +55,20 @@ export function isOfflinePredictionReady(): boolean {
  * Always calculates RF score for comparison
  */
 export async function predictRecruit(recruit: RecruitInput): Promise<PredictionResult> {
+  // Determine effective position (handles ATH by checking archetype)
+  const effectivePosition = getEffectivePosition(recruit.position, recruit.archetype);
   const isDualThreat = recruit.archetype === 'Dual Threat';
-  const isCB = recruit.position === 'CB';
+  const isCB = effectivePosition === 'CB';
+  const isWR = effectivePosition === 'WR';
 
   // Handle CB position
   if (isCB) {
     return predictCBRecruit(recruit);
+  }
+
+  // Handle WR position (no model yet - use baseline prediction)
+  if (isWR) {
+    return predictWRRecruit(recruit);
   }
 
   // QB prediction flow
@@ -266,4 +275,28 @@ function getBaselinePrediction(recruit: RecruitInput): number {
   }
 
   return probability;
+}
+
+/**
+ * Predict WR recruit - baseline prediction until we have enough data
+ * Uses gem color and star rating as initial heuristics
+ */
+async function predictWRRecruit(recruit: RecruitInput): Promise<PredictionResult> {
+  // For now, use baseline prediction until we have WR training data
+  let probability = getBaselinePrediction(recruit);
+  let modelUsed = 'WR Baseline (collecting data)';
+
+  // Clamp probability to [0, 1]
+  probability = Math.max(0, Math.min(1, probability));
+
+  return {
+    name: recruit.name,
+    position: recruit.position,
+    archetype: recruit.archetype,
+    star_elite_probability: probability,
+    star_elite_percentage: Math.round(probability * 100),
+    recommendation: getRecommendation(probability, recruit.gem_color || null),
+    confidence: getConfidence(probability),
+    ml_model: modelUsed,
+  };
 }
